@@ -1,0 +1,35 @@
+- hosts: geoserver
+  tasks:
+    - name: Install Docker
+      yum:
+        name: docker-ce
+      become: yes
+        
+    - name: Install Docker compose plugin
+      yum:
+        name: docker-compose-plugin
+      become: yes
+
+    - name: Add Ansible user to docker group      
+      user: name={{ ansible_user }}
+            groups=docker
+            append=yes
+      become: yes
+
+    - name: Start GeoServer container
+      community.docker.docker_container:
+        name: geoserver
+        image: docker.osgeo.org/geoserver:2.25.3
+        state: started
+        ports: 80:8080
+        env:
+          INSTALL_EXTENSIONS: "true"
+          STABLE_EXTENSIONS: "wps,csw"
+          EXTRA_JAVA_OPTS: "-Xms1G -Xmx2G"
+        volumes:
+          /data/geoserver:/opt/geoserver_data
+        healthcheck:
+          test: curl --fail "http://localhost:8080/geoserver/web/wicket/resource/org.geoserver.web.GeoServerBasePage/img/logo.png" || exit 1
+          interval: 1m
+          retries: 3
+          timeout: 20s
