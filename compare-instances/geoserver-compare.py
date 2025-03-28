@@ -5,6 +5,13 @@
 #   - Layers
 #   - 
 
+# Modules renamed along the way, we should probably ignore them:
+# (these are in the core)
+RenamedModules = { 'system-environment': 'System Environment',
+                   'system-properties':  'System Properties',
+                   'GeoServer Web REST': 'GeoServer Web UI REST',
+                   'GeoWeb Cache':       'GeoWebCache' }
+
 import os
 from dotenv import load_dotenv
 import requests
@@ -56,12 +63,14 @@ for G in GeoServers:
     #pprint.pp(G["workspaces"])
     
 
-# Comparing time 
+# Comparison time
 print(" -- Comparing data")
 S1 = set(GeoServers[0]["workspaces"].keys())
 S2 = set(GeoServers[1]["workspaces"].keys())
 
+# Unique workspaces
 D1,D2 = set_differences(S1, S2)
+
 if len(D1) > 0:
     print(f"[WARN] Workspaces only in {GeoServers[0]['tag']}: ", D1)
 
@@ -93,11 +102,27 @@ S1 = set(GeoServers[0]["status"].keys())
 S2 = set(GeoServers[1]["status"].keys())
 
 D1,D2 = set_differences(S1, S2)
+R = set()
+
+for D in D1.copy():
+    if D in RenamedModules.keys():
+        D1.discard(D)
+        D2.discard(RenamedModules[D])
+        R.add(D)
+for D in D2.copy():
+    if D in RenamedModules.keys():
+        D1.discard(RenamedModules[D])
+        D2.discard(D)
+        R.add(D)
+
 if len(D1) > 0:
     print(f"[WARN] Modules only in {GeoServers[0]['tag']}: ", D1)
 
 if len(D2) > 0:
     print(f"[WARN] Modules only in {GeoServers[1]['tag']}: ", D2)    
+
+if len(R) > 0:
+    print(f"[INFO] Renamed modules: ", {k: v for k, v in RenamedModules.items() if k in R} )
 
 if (D1,D2) == (set(), set()):
     print(f'[OK] Module lists are identical')

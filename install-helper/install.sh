@@ -24,10 +24,14 @@ fi
 
 SRCDIR=$1
 
-JARS=$(ls $SRCDIR/plugin-jars/*.jar)
+JARS=$(find $SRCDIR/plugin-jars/ -name '*.jar')
 
 echo ""
-echo "geoserver.war and " $(howmany $JARS) " jars to copy from $1. OK?"
+echo " --- geoserver.war and " $(howmany $JARS) " jars to copy from $1. ---"
+echo "Please answer yes only if you are sure that:"
+echo "  - the data directory (GEOSERVER_DATA_DIR) is not under the GeoServer install"
+echo "  - the location of the data directory is not being set in a file under the GeoServer install"
+echo "ARE YOU SURE?"
 select yesno in "Yes" "No" ; do
     case $yesno in
         Yes ) echo "Proceeding with install."
