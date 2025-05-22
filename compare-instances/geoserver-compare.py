@@ -5,6 +5,14 @@
 #   - Layers
 #   - 
 
+import argparse
+from dotenv import load_dotenv
+import json
+import os
+import pprint
+import requests
+
+
 # Modules renamed along the way, we should probably ignore them:
 # (these are in the core)
 RenamedModules = { 'system-environment': 'System Environment',
@@ -12,43 +20,56 @@ RenamedModules = { 'system-environment': 'System Environment',
                    'GeoServer Web REST': 'GeoServer Web UI REST',
                    'GeoWeb Cache':       'GeoWebCache' }
 
-import os
-from dotenv import load_dotenv
-import requests
-import pprint
 
-load_dotenv()
+
+helptext = "Compare two GeoServer instances, either live or live vs. stored (TODO)"
+epilog = "The environment should include variables SERVER_[URL|USER|PASS|TAG]_[1|2].\nTAG variables are optional. When dumping or loading from file, only variables numbered 1 are required."
+argparser = argparse.ArgumentParser(description=helptext, epilog=epilog)
+argparser.add_argument('-e', '--env', action='store', help='Environment file (defaults to .env)', metavar='ENVFILE', type=argparse.FileType('r'), default='.env')
+g = argparser.add_mutually_exclusive_group()
+g.add_argument('-d', '--dump', action='store', help='Dump GeoServer state to JSON file', metavar='DUMPFILE', type=argparse.FileType('w'))
+g.add_argument('-l', '--load', action='store', help='Use stored GeoServer state for comparison', metavar='DUMPFILE', type=argparse.FileType('r'))
+g.add_argument('-v', '--verbose', action='store_true')
+conf = argparser.parse_args()
+env, dumpfile, loadfile,verbosity = conf.env, conf.dump, conf.load, conf.verbose
+
+if env is not None:
+    load_dotenv(stream=env)
+
+GeoServers = [ {"URL": os.getenv('SERVER_URL_1'),
+                "user": os.getenv('SERVER_USER_1'),
+                "tag": os.getenv('SERVER_TAG_1'),                
+                "pass": os.getenv('SERVER_PASS_1') } ]
+
+if dumpfile is None and loadfile is None:
+    GeoServers.append( {"URL": os.getenv('SERVER_URL_2'),
+                "user": os.getenv('SERVER_USER_2'),
+                "tag": os.getenv('SERVER_TAG_2'),               
+                "pass": os.getenv('SERVER_PASS_2') } )
+
+
 
 # Return a tuple with items unique to A and B
 def set_differences(A, B):
     return A.difference(B), B.difference(A)
 
-
-GeoServers = [ {"URL": os.getenv('SERVER_URL_1'),
-                "user": os.getenv('SERVER_USER_1'),
-                "tag": os.getenv('SERVER_TAG_1'),                
-                "pass": os.getenv('SERVER_PASS_1') },
-               {"URL": os.getenv('SERVER_URL_2'),
-                "user": os.getenv('SERVER_USER_2'),
-                "tag": os.getenv('SERVER_TAG_2'),               
-                "pass": os.getenv('SERVER_PASS_2') }
-               ]
-
-print(f"Analyzing GeoServers ...")
-for G in GeoServers:
+# Dig through a GeoServer and store the info 
+def analyze(G):
     print(f" -- Loading modules for {G['tag']}")
     # Load status = installed modules. Available fields:
     # 2.18: name, href
     response = requests.get(G["URL"] + "/about/status.json", auth=(G["user"], G["pass"]) )
     tmp = response.json()['statuss']['status']
     G["status"] = {item['name']:item for item in tmp}
-
+    if verbosity:
+        print(G["status"])
+        
     print(f" -- Loading workspaces for {G['tag']}")
     # Load workspaces
     response = requests.get(G["URL"] + "/workspaces.json", auth=(G["user"], G["pass"]) )
     tmp = response.json()['workspaces']['workspace']
     G["workspaces"] = {item['name']:item for item in tmp}
-
+        
     for ws in G["workspaces"].keys():
         response = requests.get(G["URL"] + f"/workspaces/{ws}/layers.json", auth=(G["user"], G["pass"]) )
         #print(response.headers)
@@ -59,10 +80,25 @@ for G in GeoServers:
         else:
             layers = {}
         G["workspaces"][ws]["layers"] = layers
-        
-    #pprint.pp(G["workspaces"])
-    
+        if verbosity:
+            print(ws + " : " + ", ".join(layers))
+    return G
 
+print(f"Analyzing GeoServers ...")        
+for G in GeoServers:    
+    G = analyze(G)
+
+if dumpfile is not None:
+    print(" -- Storing status to file")
+    GeoServers[0].pop('user')
+    GeoServers[0].pop('pass')
+    dumpfile.write(json.dumps(GeoServers[0]))
+    exit(0)
+
+if loadfile is not None:
+    print(" -- Loading stored status from file")
+    GeoServers.append(json.load(loadfile))
+    
 # Comparison time
 print(" -- Comparing data")
 S1 = set(GeoServers[0]["workspaces"].keys())
